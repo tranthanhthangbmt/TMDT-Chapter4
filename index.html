@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình phát Bài giảng</title>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background-color: #000; overflow: hidden; }
+        .player-container {
+            background-color: #ffffff; width: 100vw; height: 100dvh;
+            box-sizing: border-box; display: flex; flex-direction: column;
+            position: relative; /* Cần thiết để định vị thanh điều khiển */
+        }
+        .slide-viewer { border: 1px solid #ddd; border-radius: 8px; overflow-y: auto; flex-grow: 1; position: relative; }
+        .slide-viewer img { width: 100%; height: auto; display: block; }
+        .slide-viewer.fit-mode { overflow: hidden; }
+        .slide-viewer.fit-mode img { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* [CẬP NHẬT] Bọc thanh điều khiển và timeline vào một thẻ div chung */
+        .bottom-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+            transition: transform 0.4s ease-in-out;
+            transform: translateY(0);
+        }
+        /* [CẬP NHẬT] Class để ẩn thanh điều khiển */
+        .player-container.inactive .bottom-bar {
+            transform: translateY(100%);
+        }
+
+        .timeline-container { width: 100%; padding: 5px 0; margin-bottom: 5px; }
+        .progress-bar-wrapper { background-color: rgba(255,255,255,0.5); border-radius: 5px; cursor: pointer; padding: 4px 0; }
+        .progress-bar { background-color: #007bff; width: 0%; height: 8px; border-radius: 5px; }
+        .time-display { display: flex; justify-content: space-between; font-size: 12px; color: #fff; margin-top: 5px; text-shadow: 1px 1px 2px black; }
+        .controls { display: flex; justify-content: space-around; align-items: center; gap: 5px; }
+        .controls button { color: white; border: none; border-radius: 50%; width: 44px; height: 44px; font-size: 20px; cursor: pointer; transition: background-color 0.3s; display: flex; align-items: center; justify-content: center; padding: 0; background-color: rgba(0,0,0,0.3); }
+        #play-pause-btn { background-color: #28a745; width: 50px; height: 50px; font-size: 24px; }
+        .slide-counter { flex-grow: 1; text-align: center; font-size: 16px; color: #fff; font-weight: bold; text-shadow: 1px 1px 2px black; }
+    </style>
+</head>
+<body>
+
+    <div class="player-container" id="player-container">
+        <div id="slide-viewer" class="slide-viewer">
+            <img id="slide-image" src="" alt="Nội dung slide">
+        </div>
+        
+        <div class="bottom-bar">
+            <div class="timeline-container">
+                <div id="progress-bar-wrapper" class="progress-bar-wrapper">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div class="time-display">
+                    <span id="current-time">00:00</span>
+                    <span id="total-duration">00:00</span>
+                </div>
+            </div>
+            <div class="controls">
+                <button id="prev-btn" title="Slide trước">⏪</button>
+                <button id="play-pause-btn" title="Phát/Dừng">▶️</button>
+                <div id="slide-counter" class="slide-counter"></div>
+                <button id="next-btn" title="Slide tiếp theo">⏩</button>
+                <button id="autoscroll-btn" title="Bật/Tắt Tự cuộn">🔄</button>
+                <button id="scale-btn" title="Chế độ xem">⛶</button>
+                <button id="fullscreen-btn" title="Toàn màn hình">🖼️</button>
+            </div>
+        </div>
+        
+        <audio id="slide-audio" src=""></audio>
+    </div>
+
+    <script>
+        // --- PHẦN CẤU HÌNH ---
+        const TOTAL_SLIDES = 35;
+        const IMAGE_BASENAME = 'slide-';
+        const IMAGE_EXTENSION = '.png';
+
+        // --- PHẦN LOGIC ---
+        const playerContainer = document.getElementById('player-container'); // Lấy container chính
+        //... (lấy các phần tử khác)
+
+        // [CẬP NHẬT LỚN] Logic tự động ẩn/hiện thanh điều khiển
+        let inactivityTimer;
+
+        function showControlsAndResetTimer() {
+            playerContainer.classList.remove('inactive');
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                playerContainer.classList.add('inactive');
+            }, 3000); // Ẩn sau 3 giây
+        }
+
+        // Lắng nghe các sự kiện tương tác
+        playerContainer.addEventListener('mousemove', showControlsAndResetTimer);
+        playerContainer.addEventListener('touchstart', showControlsAndResetTimer);
+        playerContainer.addEventListener('click', showControlsAndResetTimer);
+        // Ban đầu, hiển thị và bắt đầu đếm giờ
+        showControlsAndResetTimer();
+
+
+        // --- Toàn bộ phần code logic còn lại giữ nguyên (đã được thu gọn) ---
+        const slideViewer=document.getElementById("slide-viewer"),slideImage=document.getElementById("slide-image"),slideAudio=document.getElementById("slide-audio"),autoscrollBtn=document.getElementById("autoscroll-btn"),playPauseBtn=document.getElementById("play-pause-btn"),prevBtn=document.getElementById("prev-btn"),nextBtn=document.getElementById("next-btn"),slideCounter=document.getElementById("slide-counter"),scaleBtn=document.getElementById("scale-btn"),fullscreenBtn=document.getElementById("fullscreen-btn"),progressBarWrapper=document.getElementById("progress-bar-wrapper"),progressBar=document.getElementById("progress-bar"),currentTimeEl=document.getElementById("current-time"),totalDurationEl=document.getElementById("total-duration");
+        let isFitMode=!1,scrollAnimationId=null,currentSlideIndex=0,isAutoscrollEnabled=!1;
+        // [CẬP NHẬT LỚN] Cấu trúc lại hoàn toàn hàm showSlide
+        function showSlide(index) {
+            cancelAnimationFrame(scrollAnimationId);
+            const slide = slides[index];
+            
+            // Bước 1: Gán nguồn ảnh mới
+            slideImage.src = slide.image;
+            slideAudio.src = slide.audio; // Gán luôn nguồn audio
+
+            // Bước 2: Tạo một hàm để thực hiện sau khi ảnh tải xong
+            const onImageLoad = () => {
+				slideCounter.textContent = `${index + 1} / ${TOTAL_SLIDES}`;
+				slideViewer.scrollTop = 0;
+				prevBtn.disabled = (index === 0);
+
+				// Phát audio sau khi ảnh chắc chắn tải xong
+				const playPromise = slideAudio.play();
+				if (playPromise !== undefined) {
+					playPromise.catch(error => console.log("Autoplay bị chặn."));
+				}
+
+				// 🔄 [THÊM MỚI] Nếu auto scroll đang bật thì kích hoạt lại
+				if (isAutoscrollEnabled && !isFitMode) {
+					cancelAnimationFrame(scrollAnimationId);
+					requestAnimationFrame(autoScroll);
+				}
+			};
+
+
+            // Bước 4: Lắng nghe sự kiện 'load' của ảnh
+            slideImage.removeEventListener('load', onImageLoad); // Xóa listener cũ để tránh lặp
+            slideImage.addEventListener('load', onImageLoad);
+            
+            // Xử lý trường hợp ảnh đã có sẵn trong cache
+            if (slideImage.complete) {
+                onImageLoad();
+            }
+        }
+        function autoScroll(){if(!isAutoscrollEnabled||isFitMode||slideAudio.paused||slideAudio.ended)return;const e=slideAudio.duration,t=slideAudio.currentTime,l=slideViewer.scrollHeight-slideViewer.clientHeight,n=(t/e)*l;slideViewer.scrollTop=n,scrollAnimationId=requestAnimationFrame(autoScroll)}
+        autoscrollBtn.addEventListener("click",()=>{isAutoscrollEnabled=!isAutoscrollEnabled;autoscrollBtn.classList.toggle("active",isAutoscrollEnabled);isAutoscrollEnabled&&!slideAudio.paused?requestAnimationFrame(autoScroll):cancelAnimationFrame(scrollAnimationId)});
+        scaleBtn.addEventListener("click",()=>{isFitMode=!isFitMode;slideViewer.classList.toggle("fit-mode",isFitMode);scaleBtn.innerHTML=isFitMode?"↕️":"⛶";isFitMode?cancelAnimationFrame(scrollAnimationId):requestAnimationFrame(autoScroll)});
+        function toggleFullscreen(){const e=window.matchMedia("(max-width: 768px)").matches;if(!document.fullscreenElement){document.documentElement.requestFullscreen().catch(e=>{alert(`Không thể bật chế độ toàn màn hình: ${e.message}`)});e&&screen.orientation&&"function"==typeof screen.orientation.lock&&screen.orientation.lock("landscape").catch(e=>{console.log("Không thể tự động xoay màn hình.")})}else{document.exitFullscreen();e&&screen.orientation&&"function"==typeof screen.orientation.unlock&&screen.orientation.unlock()}}
+        fullscreenBtn.addEventListener("click",toggleFullscreen);
+        document.addEventListener("fullscreenchange",()=>{fullscreenBtn.innerHTML=document.fullscreenElement?"X":"🖼️"});
+        slideAudio.addEventListener("play",()=>{playPauseBtn.innerHTML="⏸️"});
+        slideAudio.addEventListener("pause",()=>{playPauseBtn.innerHTML="▶️"});
+        function formatTime(e){const t=Math.floor(e/60),l=Math.floor(e%60);return`${t.toString().padStart(2,"0")}:${l.toString().padStart(2,"0")}`}
+        slideAudio.addEventListener("timeupdate",()=>{if(slideAudio.duration){progressBar.style.width=`${slideAudio.currentTime/slideAudio.duration*100}%`;currentTimeEl.textContent=formatTime(slideAudio.currentTime)}});
+        slideAudio.addEventListener("loadedmetadata",()=>{totalDurationEl.textContent=formatTime(slideAudio.duration)});
+        progressBarWrapper.addEventListener("click",e=>{const t=slideAudio.duration;slideAudio.currentTime=e.offsetX/progressBarWrapper.clientWidth*t});
+        slideAudio.addEventListener("ended",()=>{if(currentSlideIndex<slides.length-1){nextBtn.click()}});
+        playPauseBtn.addEventListener("click",()=>{if(slideAudio.paused){slideAudio.play()}else{slideAudio.pause()}});
+        prevBtn.addEventListener("click",()=>{if(currentSlideIndex>0){currentSlideIndex--,showSlide(currentSlideIndex)}});
+        nextBtn.addEventListener("click",()=>{if(currentSlideIndex<slides.length-1){currentSlideIndex++,showSlide(currentSlideIndex)}});
+        const slides=[];for(let i=1;i<=TOTAL_SLIDES;i++){slides.push({image:`images/slide-${i}.png`,audio:`audio/slide_${i}.mp3`})}
+        window.onload=()=>{showSlide(currentSlideIndex)};
+    </script>
+</body>
+</html>
